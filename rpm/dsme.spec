@@ -64,9 +64,9 @@ rm -rf %{buildroot}
 
 install -d %{buildroot}%{_sysconfdir}/dsme/
 install -D -m 644 reboot-via-dsme.sh %{buildroot}/etc/profile.d/reboot-via-dsme.sh
-install -D -m 644 %{SOURCE1} %{buildroot}/lib/systemd/system/%{name}.service
-install -d %{buildroot}/lib/systemd/system/multi-user.target.wants/
-ln -s ../%{name}.service %{buildroot}/lib/systemd/system/multi-user.target.wants/%{name}.service
+install -D -m 644 %{SOURCE1} %{buildroot}%{_libdir}/systemd/system/%{name}.service
+install -d %{buildroot}%{_libdir}/systemd/system/multi-user.target.wants/
+ln -s ../%{name}.service %{buildroot}%{_libdir}/systemd/system/multi-user.target.wants/%{name}.service
 install -d %{buildroot}/var/lib/dsme
 [ ! -f %{buildroot}/var/lib/dsme/alarm_queue_status ] && echo 0 > %{buildroot}/var/lib/dsme/alarm_queue_status
 
@@ -90,8 +90,8 @@ systemctl daemon-reload || :
 %dir %{_sysconfdir}/dsme
 %config %{_sysconfdir}/dbus-1/system.d/dsme.conf
 %license debian/copyright COPYING
-/lib/systemd/system/%{name}.service
-/lib/systemd/system/multi-user.target.wants/%{name}.service
+%{_libdir}/systemd/system/%{name}.service
+%{_libdir}/systemd/system/multi-user.target.wants/%{name}.service
 /var/lib/dsme
 %config(noreplace) /var/lib/dsme/alarm_queue_status
 /etc/profile.d/reboot-via-dsme.sh
