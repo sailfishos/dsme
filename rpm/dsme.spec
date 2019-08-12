@@ -93,7 +93,7 @@ systemctl daemon-reload || :
 /lib/systemd/system/%{name}.service
 /lib/systemd/system/multi-user.target.wants/%{name}.service
 /var/lib/dsme
-%config(noreplace) /var/lib/dsme/alarm_queue_status
+%config /var/lib/dsme/alarm_queue_status
 /etc/profile.d/reboot-via-dsme.sh
 
 %files tests
