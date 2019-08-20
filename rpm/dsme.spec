@@ -11,6 +11,7 @@ Source2:    dsme-rpmlintrc
 Requires:   systemd
 Requires:   ngfd
 Requires:   libdsme >= 0.66.0
+Requires:   filesystem >= 3.2
 Requires(preun): systemd
 Requires(post): systemd
 Requires(postun): systemd
