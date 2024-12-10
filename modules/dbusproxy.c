@@ -265,7 +265,8 @@ static const dsme_dbus_binding_t dbus_methods_array[] =
         .method = block_shutdown,
         .name   = dsme_inhibit_shutdown,
         .priv   = true,
-        .args   = ""
+        .args   =
+            "    <arg direction=\"in\" name=\"inhibit\" type=\"b\"/>\n"
     },
     // sentinel
     {
