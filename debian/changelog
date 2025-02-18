@@ -1,3 +1,9 @@
+dsme (0.84.5) precise; urgency=low
+
+  * [dsme] Fix memory leak on dbus introspection. JB#63149
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Tue, 18 Feb 2025 10:29:48 +0200
+
 dsme (0.84.4) precise; urgency=low
 
   * [dbusproxy] Fix inhibit_shutdown method call Introspect data. JB#62856
