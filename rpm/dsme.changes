@@ -54,7 +54,7 @@
   integrates 9 patches from here
 - Version bump to 0.62.2
 
-* Wed Aug 23 2012 Simonas Leleiva <simonas.leleiva@gmail.com> - 0.62.1.1
+* Thu Aug 23 2012 Simonas Leleiva <simonas.leleiva@gmail.com> - 0.62.1.1
 - Fixes NEMO#334: device does not poweroff
   
 * Sat Dec 17 2011 Markus Lehtone <markus.lehtonen@iki.fi> - 0.62.1.1

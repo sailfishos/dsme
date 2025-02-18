@@ -1141,6 +1141,7 @@ manager_handle_introspect(DsmeDbusManager *self, DBusMessage *req)
     FILE        *file = 0;
     char        *data = 0;
     size_t       size = 0;
+    gchar  **children = 0;
 
     const char *service_name = dbus_message_get_destination(req);
     const char *object_path = dbus_message_get_path(req);
@@ -1160,7 +1161,7 @@ manager_handle_introspect(DsmeDbusManager *self, DBusMessage *req)
     }
 
     DsmeDbusObject *object = service_get_object(service, object_path);
-    gchar **children = service_get_children_of(service, object_path);
+    children = service_get_children_of(service, object_path);
 
     if( !object && !*children ) {
         rsp = dbus_message_new_error_printf(req, DBUS_ERROR_UNKNOWN_OBJECT,
@@ -1209,6 +1210,8 @@ EXIT:
     if( file )
         fclose(file);
     free(data);
+
+    keys_free(children);
 
     return rsp;
 }
