@@ -42,6 +42,8 @@
 #include <sys/utsname.h>
 #include <sys/time.h>
 
+#define PFIX "upstart: "
+
 /* musl-libc compatibility */
 #include <features.h> // for __GLIBC__
 #ifndef __GLIBC__

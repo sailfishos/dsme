@@ -48,6 +48,8 @@
 
 #include "../include/dsme/musl-compatibility.h"
 
+#define PFIX "validatorlistener: "
+
 #define DSME_STATIC_STRLEN(s) (sizeof(s) - 1)
 
 // TODO: try to find a header that #defines NETLINK_VALIDATOR
