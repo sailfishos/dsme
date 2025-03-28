@@ -1,3 +1,9 @@
+dsme (0.84.6) precise; urgency=low
+
+    * [modules] Define PFIX in validatorlistener and upstart
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Fri, 28 Mar 2025 08:50:28 +0200
+
 dsme (0.84.5) precise; urgency=low
 
   * [dsme] Fix memory leak on dbus introspection. JB#63149
