@@ -1,3 +1,9 @@
+dsme (0.84.7) precise; urgency=low
+
+    * [dsme] Fix typo which breaks build with gcc 15
+
+ -- Matti Lehtimäki <matti.lehtimaki@jolla.com>  Thu, 29 May 2025 17:14:38 +0200
+
 dsme (0.84.6) precise; urgency=low
 
     * [modules] Define PFIX in validatorlistener and upstart
