@@ -1,3 +1,9 @@
+dsme (0.84.8) precise; urgency=low
+
+    * [dsme] Add parentheses around assignments used as truth value. JB#63834
+
+ -- Matti Lehtimäki <matti.lehtimaki@jolla.com>  Thu, 29 Jan 2026 19:29:20 +0200
+
 dsme (0.84.7) precise; urgency=low
 
     * [dsme] Fix typo which breaks build with gcc 15
