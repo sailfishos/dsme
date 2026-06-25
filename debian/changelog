@@ -1,3 +1,9 @@
+dsme (0.84.9) precise; urgency=low
+
+  * [abootsettings] Add unlock/lock permission flag support. Fixes JB#64388
+
+ -- Simo Piiroinen <simo.piiroinen@jolla.com>  Thu, 25 Jun 2026 15:05:20 +0300
+
 dsme (0.84.8) precise; urgency=low
 
     * [dsme] Add parentheses around assignments used as truth value. JB#63834
