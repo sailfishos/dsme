@@ -1,15 +1,13 @@
 /**
    @file abootsettings.c
 
-   This plug-in can control aboot's device info data in emmc.
-   User can change e.g. device lock value for aboot.
+   This plug-in can control bootloader unlock/lock permission flag.
+   Which allows user to use fastboot unlock command.
    <p>
 
+   Copyright (c) 2024 - 2026 Jolla Mobile Ltd
    Copyright (c) 2017 - 2020 Jolla Ltd.
    Copyright (c) 2020 Open Mobile Platform LLC.
-
-   @author Marko Lemmetty <marko.lemmetty@jollamobile.com>
-   @author Simo Piiroinen <simo.piiroinen@jollamobile.com>
 
    This file is part of Dsme.
 
@@ -65,12 +63,14 @@
 #define DEVINFO_BUF_SIZE         1024
 // Ini file path
 #define ABOOTSET_INI             "/etc/dsme/abootsettings.ini"
-
 #define MAX_VERSION_LEN          64
+#define BOOTLOADER_UNLOCK_INI    "/etc/dsme/bootloaderunlock.ini"
+#define BLOCK_SIZE_4K            4096
 
 // -------------------------------------
-// device info defines and variables etc.
+// Aboot device info defines and variables etc.
 // -------------------------------------
+
 typedef struct device_info device_info;
 // Support for SFOS aboot device info versions 1, 2 and 3.
 struct device_info
@@ -106,6 +106,24 @@ static gchar*      partition_name = NULL;
 static bool        dbus_methods_bound = false;
 // Is plug-in initialized.
 static bool        abootsettings_init = false;
+
+// --------------------------------------
+// Generic defines and variables
+// --------------------------------------
+
+typedef enum {
+  DSME_BOOTLOADER_ABOOT,
+  DSME_BOOTLOADER_MEDIATEK,
+  DSME_BOOTLOADER_UNKNOWN
+} bootloader_type_t;
+
+static bootloader_type_t  bootloader_type = DSME_BOOTLOADER_UNKNOWN;
+
+// -------------------------------------
+// MediaTek bootloader variables
+// -------------------------------------
+
+static unsigned int       unlock_allowed_flag = 0;
 
 // --------------------------------------
 // Functions
@@ -268,11 +286,12 @@ module_fn_info_t message_handlers[] =
  * Plugin init and fini
  * ========================================================================= */
 
-void module_init(module_t* handle)
+static bool read_partition_name(const gchar* file_path)
 {
+    bool readOk = false;
     GKeyFile* key_file = NULL;
 
-    dsme_log(LOG_DEBUG, PFIX "module_init");
+    dsme_log(LOG_DEBUG, PFIX "read_partition_name");
 
     key_file = g_key_file_new();
 
@@ -281,37 +300,60 @@ void module_init(module_t* handle)
         GError* error = NULL;
         GKeyFileFlags flags = G_KEY_FILE_NONE;
 
-        // Open ini file and read partition path.
-        if ( g_key_file_load_from_file(key_file, ABOOTSET_INI, flags, &error) )
+        if ( g_key_file_load_from_file(key_file, file_path, flags, &error) )
         {
+            dsme_log(LOG_DEBUG, PFIX "Read %s", file_path);
+
             partition_name = g_key_file_get_string(key_file,
                                                    "deviceinfo",
                                                    "partition",
                                                     &error);
             if ( partition_name )
             {
-                // Ok, we have partition name.
-                // Let DSME register functions to DBus.
-                abootsettings_init = true;
+                readOk = true;
+                dsme_log(LOG_DEBUG, PFIX "partition name: %s", partition_name);
             }
             else
             {
-                dsme_log(LOG_ERR, PFIX "%s: deviceinfo partition not defined",
-                         ABOOTSET_INI);
+                dsme_log(LOG_ERR, PFIX "Could not read partition name from INI file");
             }
         }
         else
         {
             dsme_log(error->code == G_FILE_ERROR_NOENT ? LOG_DEBUG : LOG_ERR,
-                     PFIX "%s: INI file could not be loaded: %s",
-                     ABOOTSET_INI, error->message);
+                     PFIX "INI file could not be loaded: %s", error->message);
         }
 
         g_key_file_free(key_file);
         g_clear_error(&error);
     }
 
-    dsme_log(LOG_DEBUG, PFIX "module_init done");
+    return readOk;
+}
+
+void module_init(module_t* handle)
+{
+    dsme_log(LOG_DEBUG, PFIX "module_init");
+
+    // Check if we have a INI file that directs us
+    // to use the correct partition for this hardware.
+    if ( read_partition_name(BOOTLOADER_UNLOCK_INI) )
+    {
+        abootsettings_init = true;
+        bootloader_type = DSME_BOOTLOADER_MEDIATEK;
+    }
+    else if ( read_partition_name(ABOOTSET_INI) )
+    {
+        abootsettings_init = true;
+        bootloader_type = DSME_BOOTLOADER_ABOOT;
+    }
+    else
+    {
+        // If we do not have INI file, let's not register DSME
+        // unlock/lock functions to DBus.
+        abootsettings_init = false;
+        bootloader_type = DSME_BOOTLOADER_UNKNOWN;
+    }
 }
 
 void module_fini(void)
@@ -325,14 +367,11 @@ void module_fini(void)
                              dbus_methods_array);
 
     abootsettings_init = false;
+    bootloader_type = DSME_BOOTLOADER_UNKNOWN;
 
     g_free(partition_name);
     partition_name = NULL;
 }
-
-/* ========================================================================= *
- * Device info funtions
- * ========================================================================= */
 
 /*-----------------------------------------------------------------------------
  * open_partition
@@ -353,6 +392,7 @@ static bool open_partition(int flag)
     {
         return false;
     }
+    dsme_log(LOG_DEBUG, PFIX "Open partition: %s", partition_name);
 
     partition = open(partition_name, flag);
 
@@ -416,6 +456,7 @@ static bool set_emmc_block_size()
     return true;
 }
 
+
 /*-----------------------------------------------------------------------------
  * set_file_offset
  *
@@ -469,6 +510,10 @@ static bool set_file_offset()
 
     return true;
 }
+
+/* ========================================================================= *
+ * Aboot device info functions
+ * ========================================================================= */
 
 /* --------------------------------------------------------------------------
  * encode_device_info
@@ -845,6 +890,202 @@ static bool write_device_info_to_disk()
     return true;
 }
 
+/* ========================================================================= *
+ * MediaTek bootloader unlock/lock permission functions
+ * ========================================================================= */
+
+/* -------------------------------------------------------------------------
+ * read_permission_from_data
+ *
+ * MediaTek bootloader reads flag from FRP partition:
+ * unlock allowed = 1
+ * unlock not allowed = 0
+ * -------------------------------------------------------------------------
+ */
+static bool read_permission_from_data(char* data)
+{
+    int offset = 0;
+
+    dsme_log(LOG_DEBUG, PFIX "read_permission_from_data");
+
+    if( data == NULL )
+    {
+        return false;
+    }
+
+    // In FRP partition the unlock/lock permission value is in last 32 bits.
+    offset = block_size - sizeof unlock_allowed_flag;
+    memcpy(&unlock_allowed_flag, data + offset, sizeof unlock_allowed_flag);
+
+    return true;
+}
+
+/* -------------------------------------------------------------------------
+ * read_block
+ * -------------------------------------------------------------------------
+ */
+static bool read_block(char* data)
+{
+    dsme_log(LOG_DEBUG, PFIX "read_block");
+
+    if( data == NULL )
+    {
+        return false;
+    }
+
+    // Set file pointer to offset e.g. last block of partition.
+    if( lseek(partition, devinfo_data_offset, SEEK_SET) < 0 )
+    {
+        dsme_log(LOG_ERR, PFIX "Error: Failed to seek offset");
+        return false;
+    }
+
+    if( block_size > BLOCK_SIZE_4K )
+    {
+        dsme_log(LOG_ERR, PFIX "Error: Block size too big");
+        return false;
+    }
+
+    if( read(partition, data, block_size) < block_size )
+    {
+        dsme_log(LOG_ERR, PFIX "Error: Failed to read partition");
+        return false;
+    }
+
+    return true;
+}
+
+/* -------------------------------------------------------------------------
+ * get_bootloader_permission
+ * -------------------------------------------------------------------------
+ */
+static bool get_bootloader_permission()
+{
+    char data[BLOCK_SIZE_4K];
+    memset(data, 0, BLOCK_SIZE_4K);
+
+    dsme_log(LOG_DEBUG, PFIX "get_bootloader_permission");
+
+    if( !read_block(data) )
+    {
+        return false;
+    }
+
+    return read_permission_from_data(data);
+}
+
+/* -------------------------------------------------------------------------
+ * write_permission_to_data
+ * -------------------------------------------------------------------------
+ */
+static bool write_permission_to_data(char* data, int value)
+{
+    int offset = 0;
+    unsigned int flag;
+
+    dsme_log(LOG_DEBUG, PFIX "write_permission_to_data");
+
+    if( data == NULL )
+    {
+        return false;
+    }
+
+    // The DBus value is an integer and it can be anything, so we check,
+    // that the value is either 0 or 1. The bootloader reads the value
+    // as an unsigned integer so the same type is used.
+    if( value == 0 )
+    {
+        flag = 0;  // lock bootloader
+    }
+    else if( value == 1 )
+    {
+        flag = 1;  // unlock bootloader
+    }
+    else
+    {
+        dsme_log(LOG_ERR, PFIX "Error: Input parameter not accepted");
+        return false;
+    }
+
+    dsme_log(LOG_DEBUG, PFIX "write new unlock_allowed_flag = %u ", flag);
+
+    // In FRP partition the unlock/lock permission is in last 32 bits.
+    offset = block_size - sizeof flag;
+    memcpy(data + offset, &flag, sizeof flag);
+
+    return true;
+}
+
+/* -------------------------------------------------------------------------
+ * write_block
+ * -------------------------------------------------------------------------
+ */
+static bool write_block(char* data)
+{
+    int byte_count = 0;
+
+    dsme_log(LOG_DEBUG, PFIX "write_block");
+
+    if( data == NULL )
+    {
+        return false;
+    }
+
+    // Set file pointer to last block of partition.
+    if( lseek(partition, devinfo_data_offset, SEEK_SET) < 0 )
+    {
+        dsme_log(LOG_ERR, PFIX "Error: failed to seek offset");
+        return false;
+    }
+
+    byte_count = block_size;
+
+    while( byte_count > 0 )
+    {
+        int written = TEMP_FAILURE_RETRY(write(partition,
+                                               data,
+                                               byte_count));
+        if( written < 0 )
+        {
+            dsme_log(LOG_ERR, PFIX "Error: failed to write data");
+            return false;
+        }
+        data += written;
+        byte_count -= written;
+    }
+
+    dsme_log(LOG_DEBUG, PFIX "Block write successful");
+    return true;
+}
+
+/* -------------------------------------------------------------------------
+ * write_bootloader_permission
+ * -------------------------------------------------------------------------
+ */
+static bool write_bootloader_permission(int value)
+{
+    char data[BLOCK_SIZE_4K];
+    memset(data, 0, BLOCK_SIZE_4K);
+
+    dsme_log(LOG_DEBUG, PFIX "write_bootloader_permission");
+
+    if( !read_block(data) )
+    {
+        return false;
+    }
+
+    if( !write_permission_to_data(data, value) )
+    {
+        return false;
+    }
+
+    return write_block(data);
+}
+
+/* ========================================================================= *
+ * Control functions
+ * ========================================================================= */
+
 /* ------------------------------------------------------------------------
  * get_unlocked_value
  * ------------------------------------------------------------------------
@@ -860,17 +1101,44 @@ static bool get_unlocked_value(int* unlocked)
         return false;
     }
 
-    // Set file offset for reading device info data.
-    if( set_file_offset() )
+    if( bootloader_type == DSME_BOOTLOADER_ABOOT )
     {
-        if( read_device_info_from_disk() )
+        // Set file offset for reading device info data.
+        if( set_file_offset() )
         {
-            *unlocked = (int)device.is_unlocked;
-            retOk = true;
+            if( read_device_info_from_disk() )
+            {
+                *unlocked = (int)device.is_unlocked;
+                retOk = true;
 
-            dsme_log(LOG_DEBUG, PFIX " [ is_unlocked = %d ]",
-                (int)device.is_unlocked);
+                dsme_log(LOG_DEBUG, PFIX " [ aboot is_unlocked = %d ]",
+                    (int)device.is_unlocked);
+            }
         }
+    }
+    else if( bootloader_type == DSME_BOOTLOADER_MEDIATEK )
+    {
+        if( set_file_offset() )
+        {
+            if( get_bootloader_permission() )
+            {
+                if( unlock_allowed_flag )
+                {
+                    *unlocked = 1;
+                    dsme_log(LOG_DEBUG, PFIX " [ permission is unlocked ]");
+                }
+                else
+                {
+                    *unlocked = 0;
+                    dsme_log(LOG_DEBUG, PFIX " [ permission is locked ]");
+                }
+                retOk = true;
+            }
+        }
+    }
+    else
+    {
+            dsme_log(LOG_ERR, PFIX "Error: bootloader type not recognized");
     }
 
     close_partition();
@@ -892,22 +1160,41 @@ static bool set_unlocked_value(int value)
         return false;
     }
 
-    // Set file offset to last block of partition.
-    if( set_file_offset() )
+    if( bootloader_type == DSME_BOOTLOADER_ABOOT )
     {
-        // Read data from partition.
-        if( read_device_info_from_disk() )
+        // Set file offset to last block of partition.
+        if( set_file_offset() )
         {
-            device.is_unlocked = value;
+            if( read_device_info_from_disk() )
+            {
+                device.is_unlocked = value;
 
-            dsme_log(LOG_DEBUG, PFIX " [ is_unlocked = %d ]",
-                (int)device.is_unlocked );
+                dsme_log(LOG_DEBUG, PFIX " [ unlocked value = %d ]",
+                    (int)device.is_unlocked );
 
-            if( write_device_info_to_disk() )
+                if( write_device_info_to_disk() )
+                {
+                    retOk = true;
+                }
+            }
+        }
+    }
+    else if( bootloader_type == DSME_BOOTLOADER_MEDIATEK )
+    {
+        if( set_file_offset() )
+        {
+            dsme_log(LOG_DEBUG, PFIX " [ unlocked value = %d ]",
+                value );
+
+            if( write_bootloader_permission(value) )
             {
                 retOk = true;
             }
         }
+    }
+    else
+    {
+         dsme_log(LOG_ERR, PFIX "Error: bootloader type not recognized");
     }
 
     close_partition();
