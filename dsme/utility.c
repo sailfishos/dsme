@@ -84,7 +84,7 @@ dsme_user_is_privileged(uid_t uid, gid_t gid)
             }
         }
     }
-#else
+#endif
     /* Check if UID/GID is root/privileged */
     if( uid != 0 && gid != 0 ) {
         struct passwd *pw = getpwnam("privileged");
@@ -99,7 +99,6 @@ dsme_user_is_privileged(uid_t uid, gid_t gid)
     is_privileged = true;
 
 EXIT:
-#endif
     return is_privileged;
 }
 
